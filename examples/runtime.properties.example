@@ -1,0 +1,12 @@
+# Non-secret settings only. Set credentials in environment variables.
+token_reuse_ratio=0.75
+token_jitter_fraction=0.05
+token_safety_seconds=30
+token_each_request=false
+connect_timeout_ms=5000
+response_timeout_ms=30000
+think_time_ms=0
+# Enable only for a local mock, never to send a Cognito secret over remote HTTP.
+# allow_http_token_loopback=true
+# Remote APIs should use https. Optional controlled-network exception:
+# allow_http_api=true

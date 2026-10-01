@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "generated_utc": "2026-10-01T12:52:34.527689+00:00",
+  "source_file": "openapi.sample.yaml",
+  "source_sha256": "e6b7855131ea7300cd612f4491792d51832345783ba91935bad942d906768491",
+  "openapi": "3.0.3",
+  "jmeter": "5.6.3",
+  "seed": 42,
+  "sample": true,
+  "randomization": "generation-time; fixed for each run of this JMX",
+  "target": {
+    "protocol": "http",
+    "host": "localhost",
+    "port": 8080,
+    "base_path": ""
+  },
+  "enabled_operations": [
+    "listItems"
+  ],
+  "required_scopes_selected": [
+    "demo-api/read"
+  ],
+  "required_scopes_all": [
+    "demo-api/read",
+    "demo-api/write"
+  ],
+  "operations": [
+    {
+      "key": "listItems",
+      "method": "GET",
+      "path": "/items",
+      "enabled": true
+    },
+    {
+      "key": "createItem",
+      "method": "POST",
+      "path": "/items",
+      "enabled": false
+    },
+    {
+      "key": "getItem",
+      "method": "GET",
+      "path": "/items/{itemId}",
+      "enabled": false
+    },
+    {
+      "key": "deleteItem",
+      "method": "DELETE",
+      "path": "/items/{itemId}",
+      "enabled": false
+    },
+    {
+      "key": "searchItems",
+      "method": "POST",
+      "path": "/search",
+      "enabled": false
+    }
+  ],
+  "warnings": [],
+  "notes": [
+    "All operations are included; default enables one GET/HEAD, or first operation if absent.",
+    "Token issuance is an extra HTTP request.",
+    "Business IDs, dependencies and response semantics need real test data."
+  ]
+}

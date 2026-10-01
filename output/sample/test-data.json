@@ -1,0 +1,73 @@
+{
+  "listItems": {
+    "path": {},
+    "query": {
+      "limit": 2
+    },
+    "header": {
+      "X-API-KEY": "XXXXXXXXXXXX"
+    },
+    "cookie": {}
+  },
+  "createItem": {
+    "path": {},
+    "query": {},
+    "header": {
+      "X-API-KEY": "XXXXXXXXXXXX"
+    },
+    "cookie": {},
+    "body": {
+      "active": false,
+      "category": "book",
+      "code": "YB226",
+      "name": "8VFgM0Fmxk75",
+      "quantity": 1,
+      "contact": "legw9yoojety@example.com",
+      "price": 27.2,
+      "tags": [
+        "d",
+        "b",
+        "c"
+      ]
+    },
+    "content_type": "application/json"
+  },
+  "getItem": {
+    "path": {
+      "itemId": 52
+    },
+    "query": {},
+    "header": {
+      "X-API-KEY": "XXXXXXXXXXXX"
+    },
+    "cookie": {}
+  },
+  "deleteItem": {
+    "path": {
+      "itemId": 86
+    },
+    "query": {},
+    "header": {
+      "X-API-KEY": "XXXXXXXXXXXX"
+    },
+    "cookie": {}
+  },
+  "searchItems": {
+    "path": {},
+    "query": {
+      "trace": true
+    },
+    "header": {
+      "X-API-KEY": "XXXXXXXXXXXX"
+    },
+    "cookie": {},
+    "body": {
+      "keyword": "S2JpDzfOv",
+      "tags": [
+        "B",
+        "C"
+      ]
+    },
+    "content_type": "application/x-www-form-urlencoded"
+  }
+}

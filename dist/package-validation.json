@@ -1,0 +1,18 @@
+{
+  "archive": "JMeter_Cognito_Token_Codex_20261001.zip",
+  "sha256": "c6a93c9ebcaac2984c59ed0e0a7b3e2760a00127e21b2585e7dc77cf7fa32ad8",
+  "files": 73,
+  "bytes": 213766,
+  "zip_crc_check": true,
+  "all_member_bytes_match_source": true,
+  "extracted_cli_generation": "passed: seed 42 matches bundled JMX/data/properties",
+  "excluded": [
+    ".venv",
+    ".work",
+    "__pycache__",
+    ".git",
+    "dist",
+    "results",
+    "local tools"
+  ]
+}

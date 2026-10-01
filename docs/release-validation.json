@@ -1,0 +1,78 @@
+{
+  "checked_utc": "2026-10-01T12:56:01.670677+00:00",
+  "python": "3.12.10",
+  "unit_tests": {
+    "command": "python -m unittest discover -s tests -v",
+    "passed": 20
+  },
+  "integration_tests": {
+    "command": "python tests/integration_jmeter.py --jmeter-home <JMETER_HOME>",
+    "passed": 17,
+    "evidence": "../output/verification/summary.json"
+  },
+  "compileall": "passed",
+  "pyflakes": "passed",
+  "powershell_5_1_parser": "passed: both wrappers",
+  "shellcheck_0_11_0": "passed: both wrappers",
+  "powershell_generation": "passed: YAML, seed 42, output path with spaces and Japanese characters",
+  "jtl_listener_load": {
+    "api": "JMeter SaveService.loadTestResults",
+    "default_one_samples": 2,
+    "all_five_samples": 6
+  },
+  "git_no_index_whitespace": {
+    "passed": true,
+    "text_files": 72,
+    "note": "No Git repository. Compared to NUL with autocrlf=false and cr-at-eol. Exit 1 without diagnostics means added file, not a whitespace error."
+  },
+  "utf8_and_no_replacement_characters": true,
+  "shell_line_endings": "PowerShell CRLF; Bash LF",
+  "local_markdown_links": "passed",
+  "sample_matches_current_generator": true,
+  "dependencies_match_lock": {
+    "attrs": "26.1.0",
+    "certifi": "2026.7.22",
+    "charset-normalizer": "3.5.1",
+    "et_xmlfile": "2.0.0",
+    "idna": "3.20",
+    "jsonschema": "4.26.0",
+    "jsonschema-path": "0.3.4",
+    "jsonschema-specifications": "2025.9.1",
+    "lazy-object-proxy": "1.12.0",
+    "openapi-schema-validator": "0.6.3",
+    "openapi-spec-validator": "0.7.2",
+    "openpyxl": "3.1.5",
+    "pathable": "0.4.4",
+    "PyYAML": "6.0.3",
+    "referencing": "0.36.2",
+    "requests": "2.34.2",
+    "rfc3339-validator": "0.1.4",
+    "rpds-py": "2026.6.3",
+    "rstr": "3.2.2",
+    "six": "1.17.0",
+    "typing_extensions": "4.16.0",
+    "urllib3": "2.8.0"
+  },
+  "workbook": {
+    "sheets": 27,
+    "font": "Meiryo UI",
+    "wrap_text": true,
+    "monochrome": true,
+    "print_settings": true,
+    "formulas": [
+      "=C7*C8",
+      "=C9",
+      "=C4*ROUNDUP(C7/(C5*C6),0)",
+      "=1-C11/C10",
+      "=C4/(C5*C6)"
+    ]
+  },
+  "credential_scan": "Mock secret, Basic header, and issued mock tokens absent in all published JTL/log files",
+  "not_verified": [
+    "Real Cognito/API Gateway",
+    "RHEL 9.8 execution",
+    "PowerShell 7",
+    "Excel application display/printing/recalculation",
+    "Fresh pip installation in this managed environment"
+  ]
+}

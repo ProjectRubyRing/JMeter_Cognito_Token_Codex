@@ -1,0 +1,176 @@
+[
+  {
+    "id": "S01",
+    "title": "AWS公式：token endpoint",
+    "url": "https://docs.aws.amazon.com/cognito/latest/developerguide/token-endpoint.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S02",
+    "title": "AWSの料金変更告知",
+    "url": "https://aws.amazon.com/about-aws/whats-new/2025/11/amazon-cognito-removes-machine-machine-app-client-price-dimension/",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S03",
+    "title": "現行料金表",
+    "url": "https://aws.amazon.com/cognito/pricing/",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S04",
+    "title": "Bearerの標準仕様",
+    "url": "https://www.rfc-editor.org/rfc/rfc6750",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S05",
+    "title": "JWTの標準仕様",
+    "url": "https://www.rfc-editor.org/rfc/rfc7519.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S06",
+    "title": "API GatewayのAPIキーと利用量プラン",
+    "url": "https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-api-usage-plans.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S07",
+    "title": "OAuth 2.0",
+    "url": "https://www.rfc-editor.org/rfc/rfc6749",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S08",
+    "title": "OIDC発表",
+    "url": "https://openid.net/the-openid-foundation-launches-the-openid-connect-standard/",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S09",
+    "title": "Cognito登場",
+    "url": "https://aws.amazon.com/about-aws/whats-new/2014/07/10/introducing-amazon-cognito/",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S10",
+    "title": "2017年の機能拡張",
+    "url": "https://aws.amazon.com/about-aws/whats-new/2017/08/amazon-cognito-launches-general-availability-of-a-built-in-customizable-user-experience-for-sign-in-oauth-2-0-support-and-federation-with-facebook-login-with-amazon-google-and-saml-providers-for-user-pools/",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S11",
+    "title": "secret管理の更新",
+    "url": "https://aws.amazon.com/about-aws/whats-new/2026/02/amazon-cognito-client-secret-lifecycle/",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S12",
+    "title": "GetClientToken発表",
+    "url": "https://aws.amazon.com/about-aws/whats-new/2026/08/amazon-cognito-get-client-token/",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S13",
+    "title": "JMeter公式の沿革と役割",
+    "url": "https://jmeter.apache.org/",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S14",
+    "title": "OpenAPI Initiativeの説明",
+    "url": "https://www.openapis.org/about",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S15",
+    "title": "アプリクライアントの公式説明",
+    "url": "https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-client-apps.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S16",
+    "title": "Cognitoのクォータ",
+    "url": "https://docs.aws.amazon.com/cognito/latest/developerguide/quotas.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S17",
+    "title": "CreateUserPoolClientのフロー制約",
+    "url": "https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_CreateUserPoolClient.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S18",
+    "title": "M2Mとリソースサーバー",
+    "url": "https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-define-resource-servers.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S19",
+    "title": "access tokenの有効期間",
+    "url": "https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-the-access-token.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S20",
+    "title": "REST APIのCognito authorizer",
+    "url": "https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-enable-cognito-user-pool.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S21",
+    "title": "HTTP API JWT authorizer",
+    "url": "https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S22",
+    "title": "AWSのトークンキャッシュ推奨",
+    "url": "https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-caching-tokens.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S23",
+    "title": "JMeterコンポーネントリファレンス",
+    "url": "https://jmeter.apache.org/usermanual/component_reference.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S24",
+    "title": "JMeterの推奨事項",
+    "url": "https://jmeter.apache.org/usermanual/best-practices.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S25",
+    "title": "JMeter導入手順",
+    "url": "https://jmeter.apache.org/usermanual/get-started.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S26",
+    "title": "RHEL 9.8 Release Notes",
+    "url": "https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html-single/9.8_release_notes/index",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S27",
+    "title": "OpenAPI 3.0.4",
+    "url": "https://spec.openapis.org/oas/v3.0.4.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S28",
+    "title": "OpenAPI 3.1.1",
+    "url": "https://spec.openapis.org/oas/v3.1.1.html",
+    "checked": "2026-10-01"
+  },
+  {
+    "id": "S29",
+    "title": "Listenerと保存形式",
+    "url": "https://jmeter.apache.org/usermanual/listeners.html",
+    "checked": "2026-10-01"
+  }
+]

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testResults version="1.2">
+<httpSample t="108" it="0" lt="100" ct="78" ts="1790859016880" s="true" lb="AUTH Cognito /oauth2/token" rc="200" rm="OK" tn="Smoke: 1 thread x 1 iteration 1-1" dt="text" de="UTF-8" by="240" sby="385" ng="1" na="1"/>
+<httpSample t="6" it="0" lt="6" ct="5" ts="1790859017258" s="false" lb="API GET listItems" rc="403" rm="Forbidden" tn="Smoke: 1 thread x 1 iteration 1-1" dt="text" de="" by="171" sby="211" ng="1" na="1">
+  <assertionResult>
+    <name>Expected HTTP status from OpenAPI</name>
+    <failure>true</failure>
+    <error>false</error>
+    <failureMessage>Test failed: code expected to match /^(?:200)$/</failureMessage>
+  </assertionResult>
+</httpSample>
+
+</testResults>

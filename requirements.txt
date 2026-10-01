@@ -1,0 +1,6 @@
+# Python 3.11+; use requirements.lock.txt for the tested environment.
+openapi-spec-validator==0.7.2
+openapi-schema-validator==0.6.3
+openpyxl==3.1.5
+PyYAML==6.0.3
+rstr==3.2.2

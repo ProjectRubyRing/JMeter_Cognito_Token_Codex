@@ -1,0 +1,243 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Cognito M2M demonstration API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://example.invalid/ignored"
+    }
+  ],
+  "security": [
+    {
+      "cognito": [
+        "demo-api/read"
+      ],
+      "apiKey": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "cognito": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "https://example.invalid/oauth2/token",
+            "scopes": {
+              "demo-api/read": "Read items",
+              "demo-api/write": "Write items"
+            }
+          }
+        }
+      },
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-KEY"
+      }
+    },
+    "schemas": {
+      "Item": {
+        "type": "object",
+        "required": [
+          "name",
+          "quantity",
+          "active",
+          "category",
+          "code"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 24
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "book",
+              "toy"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}[0-9]{3}$"
+          },
+          "tags": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "a",
+                "b",
+                "c",
+                "d"
+              ]
+            }
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 100,
+            "multipleOf": 0.1
+          },
+          "contact": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/items": {
+      "get": {
+        "operationId": "listItems",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createItem",
+        "security": [
+          {
+            "cognito": [
+              "demo-api/write"
+            ],
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Item"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/items/{itemId}": {
+      "parameters": [
+        {
+          "name": "itemId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getItem",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteItem",
+        "security": [
+          {
+            "cognito": [
+              "demo-api/write"
+            ],
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/search": {
+      "post": {
+        "operationId": "searchItems",
+        "parameters": [
+          {
+            "name": "trace",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keyword": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 12
+                  },
+                  "tags": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "A",
+                        "B",
+                        "C"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    }
+  }
+}

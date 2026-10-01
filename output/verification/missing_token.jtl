@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testResults version="1.2">
+<httpSample t="168" it="0" lt="139" ct="94" ts="1790858963300" s="false" lb="AUTH Cognito /oauth2/token" rc="200" rm="OAuth acquisition failed; inspect HTTP status and private Cognito settings. Sensitive response redacted." tn="Smoke: 1 thread x 1 iteration 1-1" dt="text" de="UTF-8" by="189" sby="385" ng="1" na="1"/>
+
+</testResults>

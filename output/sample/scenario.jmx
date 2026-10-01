@@ -1,0 +1,1487 @@
+<?xml version='1.0' encoding='utf-8'?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Cognito M2M + OpenAPI smoke test" enabled="true">
+      <stringProp name="TestPlan.comments">One thread, one loop, one API operation enabled. OAuth is an additional request. Set COGNITO_TOKEN_URL, COGNITO_CLIENT_ID, COGNITO_CLIENT_SECRET, COGNITO_SCOPE in the JMeter process environment.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">true</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="host" elementType="Argument">
+            <stringProp name="Argument.name">host</stringProp>
+            <stringProp name="Argument.value">${__P(host,localhost)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="port" elementType="Argument">
+            <stringProp name="Argument.name">port</stringProp>
+            <stringProp name="Argument.value">${__P(port,8080)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="protocol" elementType="Argument">
+            <stringProp name="Argument.name">protocol</stringProp>
+            <stringProp name="Argument.value">${__P(protocol,http)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="api_key" elementType="Argument">
+            <stringProp name="Argument.name">api_key</stringProp>
+            <stringProp name="Argument.value">${__P(api_key,XXXXXXXXXXXX)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+        </collectionProp>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Smoke: 1 thread x 1 iteration" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">stopthread</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">${__P(loops,1)}</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,1)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(ramp_seconds,1)}</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="HTTP defaults" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+            <collectionProp name="Arguments.arguments" />
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${host}</stringProp>
+          <stringProp name="HTTPSampler.port">${port}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${protocol}</stringProp>
+          <stringProp name="HTTPSampler.contentEncoding">UTF-8</stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">${__P(connect_timeout_ms,5000)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(response_timeout_ms,30000)}</stringProp>
+          <stringProp name="HTTPSampler.implementation">HttpClient4</stringProp>
+        </ConfigTestElement>
+        <hashTree />
+        <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="GET listItems" enabled="true" />
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Prepare / check token (no result on success)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters" />
+            <stringProp name="filename" />
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">// Executes before EVERY selected API operation. vars belong to this JMeter thread.
+import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+try {
+    if (!vars.get('__auth_initialized')) {
+        def setting = { String env, String property, String fallback -&gt;
+            def value = System.getenv(env)
+            value != null &amp;&amp; !value.isEmpty() ? value : props.getProperty(property, fallback)
+        }
+        def uri = new URI(setting('COGNITO_TOKEN_URL', 'cognito_token_url', ''))
+        boolean loopback = uri.host in ['localhost', '127.0.0.1', '[::1]', '::1']
+        boolean mockHttp = props.getProperty('allow_http_token_loopback', 'false') == 'true' &amp;&amp; loopback
+        if (!uri.host || uri.userInfo || uri.query || uri.fragment ||
+            !(uri.scheme == 'https' || uri.scheme == 'http' &amp;&amp; mockHttp) ||
+            !uri.rawPath || uri.host.endsWith('.invalid')) {
+            throw new IllegalArgumentException('Set a valid HTTPS COGNITO_TOKEN_URL; HTTP is allowed only for explicit loopback mock tests')
+        }
+        def clientId = System.getenv('COGNITO_CLIENT_ID')
+        def secret = System.getenv('COGNITO_CLIENT_SECRET')
+        if (!clientId || !secret || clientId.contains(':') || clientId == 'YOUR_CLIENT_ID') {
+            throw new IllegalArgumentException('Set COGNITO_CLIENT_ID and COGNITO_CLIENT_SECRET in the JMeter process environment')
+        }
+        def scope = setting('COGNITO_SCOPE', 'cognito_scope', '')
+        if (!scope || scope =~ /[\r\n]/) {
+            throw new IllegalArgumentException('Set space-separated custom COGNITO_SCOPE values')
+        }
+        double ratio = Double.parseDouble(props.getProperty('token_reuse_ratio', '0.75'))
+        double jitter = Double.parseDouble(props.getProperty('token_jitter_fraction', '0.05'))
+        double safety = Double.parseDouble(props.getProperty('token_safety_seconds', '30'))
+        if (!Double.isFinite(ratio) || ratio &lt;= 0 || ratio &gt;= 1 ||
+            !Double.isFinite(jitter) || jitter &lt; 0 || jitter &gt; 0.5 ||
+            !Double.isFinite(safety) || safety &lt; 0 || safety &gt; 3600) {
+            throw new IllegalArgumentException('Invalid token reuse ratio/jitter/safety settings')
+        }
+        def apiHost = vars.get('host')
+        if (!apiHost || !(apiHost ==~ /[A-Za-z0-9.:\[\]-]+/) ||
+            !(vars.get('protocol') in ['http','https']) ||
+            !(Integer.parseInt(vars.get('port')) in 1..65535)) {
+            throw new IllegalArgumentException('Invalid API host/protocol/port')
+        }
+        if (vars.get('protocol') == 'http' &amp;&amp; !(apiHost in ['localhost','127.0.0.1','::1','[::1]']) &amp;&amp;
+            props.getProperty('allow_http_api', 'false') != 'true') {
+            throw new IllegalArgumentException('Use HTTPS for a remote API, or explicitly set allow_http_api=true in a controlled test network')
+        }
+        def apiKey = System.getenv('API_KEY') ?: vars.get('api_key')
+        if (apiKey =~ /[\r\n]/) {
+            throw new IllegalArgumentException('API_KEY contains forbidden line breaks')
+        }
+        vars.put('api_key', apiKey)
+        vars.put('token_host', uri.host)
+        vars.put('token_port', Integer.toString(uri.port &lt; 0 ? (uri.scheme == 'https' ? 443 : 80) : uri.port))
+        vars.put('token_protocol', uri.scheme)
+        vars.put('token_path', uri.rawPath)
+        vars.put('cognito_scope', scope)
+        vars.putObject('__reuse_ratio', ratio)
+        vars.putObject('__jitter_fraction', jitter)
+        vars.putObject('__safety_seconds', safety)
+        vars.put('__auth_initialized', 'true')
+    }
+    long pauseMs = Long.parseLong(props.getProperty('think_time_ms', '0'))
+    if (pauseMs &lt; 0 || pauseMs &gt; 3600000) {
+        throw new IllegalArgumentException('think_time_ms must be 0..3600000')
+    }
+    if (pauseMs &gt; 0) Thread.sleep(pauseMs)
+    Long deadline = (Long) vars.getObject('__renew_at_nanos')
+    boolean needed = !vars.get('access_token') || deadline == null || System.nanoTime() &gt;= deadline ||
+        props.getProperty('token_each_request', 'false') == 'true'
+    vars.put('token_needed', Boolean.toString(needed))
+    if (needed) {
+        vars.remove('access_token')
+        vars.remove('raw_access_token')
+        vars.remove('raw_expires_in')
+        vars.remove('raw_token_type')
+        def id = URLEncoder.encode(System.getenv('COGNITO_CLIENT_ID'), 'UTF-8')
+        def secret = URLEncoder.encode(System.getenv('COGNITO_CLIENT_SECRET'), 'UTF-8')
+        vars.put('cognito_basic', 'Basic ' + Base64.encoder.encodeToString((id + ':' + secret).getBytes(StandardCharsets.UTF_8)))
+        vars.putObject('__token_started_nanos', System.nanoTime())
+    }
+    SampleResult.setIgnore()
+} catch (InterruptedException ignored) {
+    Thread.currentThread().interrupt()
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CANCELLED')
+    SampleResult.setResponseMessage('Token preparation cancelled')
+    SampleResult.setStopThread(true)
+} catch (Exception ignored) {
+    // Do not log exception text: malformed input may contain credential material.
+    vars.remove('access_token')
+    vars.remove('cognito_basic')
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CONFIG_ERROR')
+    SampleResult.setResponseMessage('Check Cognito environment variables, HTTPS endpoint and runtime settings; see handbook')
+    SampleResult.setResponseData('Configuration validation failed. No API request sent.', 'UTF-8')
+    SampleResult.setStopThread(true)
+}
+</stringProp>
+          </JSR223Sampler>
+          <hashTree />
+          <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Acquire when token is absent or renewal time reached" enabled="true">
+            <stringProp name="IfController.condition">${token_needed}</stringProp>
+            <boolProp name="IfController.evaluateAll">false</boolProp>
+            <boolProp name="IfController.useExpression">true</boolProp>
+          </IfController>
+          <hashTree>
+            <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="AUTH Cognito /oauth2/token" enabled="true">
+              <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                <collectionProp name="Arguments.arguments">
+                  <elementProp name="grant_type" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">grant_type</stringProp>
+                    <stringProp name="Argument.value">client_credentials</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                  <elementProp name="scope" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">scope</stringProp>
+                    <stringProp name="Argument.value">${cognito_scope}</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                </collectionProp>
+              </elementProp>
+              <stringProp name="HTTPSampler.path">${token_path}</stringProp>
+              <stringProp name="HTTPSampler.method">POST</stringProp>
+              <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+              <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+              <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+              <boolProp name="HTTPSampler.image_parser">false</boolProp>
+              <stringProp name="HTTPSampler.domain">${token_host}</stringProp>
+              <stringProp name="HTTPSampler.port">${token_port}</stringProp>
+              <stringProp name="HTTPSampler.protocol">${token_protocol}</stringProp>
+            </HTTPSamplerProxy>
+            <hashTree>
+              <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+                <collectionProp name="HeaderManager.headers">
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Authorization</stringProp>
+                    <stringProp name="Header.value">${cognito_basic}</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Content-Type</stringProp>
+                    <stringProp name="Header.value">application/x-www-form-urlencoded</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Accept</stringProp>
+                    <stringProp name="Header.value">application/json</stringProp>
+                  </elementProp>
+                </collectionProp>
+              </HeaderManager>
+              <hashTree />
+              <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="JSON Extractor: token / lifetime / type" enabled="true">
+                <stringProp name="JSONPostProcessor.referenceNames">raw_access_token;raw_expires_in;raw_token_type</stringProp>
+                <stringProp name="JSONPostProcessor.jsonPathExprs">$.access_token;$.expires_in;$.token_type</stringProp>
+                <stringProp name="JSONPostProcessor.match_numbers">1;1;1</stringProp>
+                <stringProp name="JSONPostProcessor.defaultValues">__MISSING__;__MISSING__;__MISSING__</stringProp>
+                <boolProp name="JSONPostProcessor.compute_concat">false</boolProp>
+              </JSONPostProcessor>
+              <hashTree />
+              <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Validate / cache / redact OAuth" enabled="true">
+                <stringProp name="scriptLanguage">groovy</stringProp>
+                <stringProp name="parameters" />
+                <stringProp name="filename" />
+                <stringProp name="cacheKey">true</stringProp>
+                <stringProp name="script">// JSON Extractor runs before this postprocessor. Scrubbing runs on every response.
+import java.util.concurrent.ThreadLocalRandom
+try {
+    def token = vars.get('raw_access_token')
+    def kind = vars.get('raw_token_type')
+    def lifetimeText = vars.get('raw_expires_in')
+    if (prev.getResponseCode() != '200' || !prev.isSuccessful() ||
+        !token || token == '__MISSING__' || !(token ==~ /[A-Za-z0-9._~+\/=-]+/) ||
+        !'Bearer'.equalsIgnoreCase(kind) || !(lifetimeText ==~ /[0-9]+/)) {
+        throw new IllegalArgumentException('Invalid OAuth response')
+    }
+    long lifetime = Long.parseLong(lifetimeText)
+    if (lifetime &lt;= 0 || lifetime &gt; 86400) throw new IllegalArgumentException('Invalid expires_in')
+    double ratio = (Double) vars.getObject('__reuse_ratio')
+    double jitter = (Double) vars.getObject('__jitter_fraction')
+    double safety = Math.min((Double) vars.getObject('__safety_seconds'), lifetime * 0.1d)
+    double useSeconds = Math.min(lifetime * ratio * (1.0d - ThreadLocalRandom.current().nextDouble() * jitter), lifetime - safety)
+    long started = (Long) vars.getObject('__token_started_nanos')
+    long deadline = started + (long) Math.floor(useSeconds * 1_000_000_000d)
+    if (System.nanoTime() &gt;= deadline) throw new IllegalArgumentException('Token response arrived too late')
+    vars.put('access_token', token)
+    vars.putObject('__renew_at_nanos', deadline)
+} catch (Exception ignored) {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+    prev.setSuccessful(false)
+    prev.setStopThread(true)
+    prev.setResponseMessage('OAuth acquisition failed; inspect HTTP status and private Cognito settings. Sensitive response redacted.')
+} finally {
+    prev.setResponseData('[REDACTED OAuth response]', 'UTF-8')
+    prev.setSamplerData('')
+    prev.setRequestHeaders('')
+    prev.setResponseHeaders('')
+    vars.remove('cognito_basic')
+    vars.remove('raw_access_token')
+    vars.remove('raw_expires_in')
+    vars.remove('raw_token_type')
+}
+</stringProp>
+              </JSR223PostProcessor>
+              <hashTree />
+            </hashTree>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="API GET listItems" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments" />
+            </elementProp>
+            <stringProp name="HTTPSampler.path">/items?limit=2</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+            <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <boolProp name="HTTPSampler.image_parser">false</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">X-API-KEY</stringProp>
+                  <stringProp name="Header.value">${api_key}</stringProp>
+                </elementProp>
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${access_token}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree />
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Clear outgoing headers (no replay)" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp>
+              <stringProp name="parameters" />
+              <stringProp name="filename" />
+              <stringProp name="cacheKey">true</stringProp>
+              <stringProp name="script">// Prevent a View Results Tree listener from retaining the outgoing bearer header.
+prev.setRequestHeaders('')
+prev.setSamplerData('')
+if (prev.getResponseCode() == '401' || prev.getResponseCode() == '403') {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+}
+// No automatic replay: a POST might already have changed server state.
+</stringProp>
+            </JSR223PostProcessor>
+            <hashTree />
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Expected HTTP status from OpenAPI" enabled="true">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="0">^(?:200)$</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">1</intProp>
+            </ResponseAssertion>
+            <hashTree />
+          </hashTree>
+        </hashTree>
+        <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="POST createItem" enabled="false" />
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Prepare / check token (no result on success)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters" />
+            <stringProp name="filename" />
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">// Executes before EVERY selected API operation. vars belong to this JMeter thread.
+import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+try {
+    if (!vars.get('__auth_initialized')) {
+        def setting = { String env, String property, String fallback -&gt;
+            def value = System.getenv(env)
+            value != null &amp;&amp; !value.isEmpty() ? value : props.getProperty(property, fallback)
+        }
+        def uri = new URI(setting('COGNITO_TOKEN_URL', 'cognito_token_url', ''))
+        boolean loopback = uri.host in ['localhost', '127.0.0.1', '[::1]', '::1']
+        boolean mockHttp = props.getProperty('allow_http_token_loopback', 'false') == 'true' &amp;&amp; loopback
+        if (!uri.host || uri.userInfo || uri.query || uri.fragment ||
+            !(uri.scheme == 'https' || uri.scheme == 'http' &amp;&amp; mockHttp) ||
+            !uri.rawPath || uri.host.endsWith('.invalid')) {
+            throw new IllegalArgumentException('Set a valid HTTPS COGNITO_TOKEN_URL; HTTP is allowed only for explicit loopback mock tests')
+        }
+        def clientId = System.getenv('COGNITO_CLIENT_ID')
+        def secret = System.getenv('COGNITO_CLIENT_SECRET')
+        if (!clientId || !secret || clientId.contains(':') || clientId == 'YOUR_CLIENT_ID') {
+            throw new IllegalArgumentException('Set COGNITO_CLIENT_ID and COGNITO_CLIENT_SECRET in the JMeter process environment')
+        }
+        def scope = setting('COGNITO_SCOPE', 'cognito_scope', '')
+        if (!scope || scope =~ /[\r\n]/) {
+            throw new IllegalArgumentException('Set space-separated custom COGNITO_SCOPE values')
+        }
+        double ratio = Double.parseDouble(props.getProperty('token_reuse_ratio', '0.75'))
+        double jitter = Double.parseDouble(props.getProperty('token_jitter_fraction', '0.05'))
+        double safety = Double.parseDouble(props.getProperty('token_safety_seconds', '30'))
+        if (!Double.isFinite(ratio) || ratio &lt;= 0 || ratio &gt;= 1 ||
+            !Double.isFinite(jitter) || jitter &lt; 0 || jitter &gt; 0.5 ||
+            !Double.isFinite(safety) || safety &lt; 0 || safety &gt; 3600) {
+            throw new IllegalArgumentException('Invalid token reuse ratio/jitter/safety settings')
+        }
+        def apiHost = vars.get('host')
+        if (!apiHost || !(apiHost ==~ /[A-Za-z0-9.:\[\]-]+/) ||
+            !(vars.get('protocol') in ['http','https']) ||
+            !(Integer.parseInt(vars.get('port')) in 1..65535)) {
+            throw new IllegalArgumentException('Invalid API host/protocol/port')
+        }
+        if (vars.get('protocol') == 'http' &amp;&amp; !(apiHost in ['localhost','127.0.0.1','::1','[::1]']) &amp;&amp;
+            props.getProperty('allow_http_api', 'false') != 'true') {
+            throw new IllegalArgumentException('Use HTTPS for a remote API, or explicitly set allow_http_api=true in a controlled test network')
+        }
+        def apiKey = System.getenv('API_KEY') ?: vars.get('api_key')
+        if (apiKey =~ /[\r\n]/) {
+            throw new IllegalArgumentException('API_KEY contains forbidden line breaks')
+        }
+        vars.put('api_key', apiKey)
+        vars.put('token_host', uri.host)
+        vars.put('token_port', Integer.toString(uri.port &lt; 0 ? (uri.scheme == 'https' ? 443 : 80) : uri.port))
+        vars.put('token_protocol', uri.scheme)
+        vars.put('token_path', uri.rawPath)
+        vars.put('cognito_scope', scope)
+        vars.putObject('__reuse_ratio', ratio)
+        vars.putObject('__jitter_fraction', jitter)
+        vars.putObject('__safety_seconds', safety)
+        vars.put('__auth_initialized', 'true')
+    }
+    long pauseMs = Long.parseLong(props.getProperty('think_time_ms', '0'))
+    if (pauseMs &lt; 0 || pauseMs &gt; 3600000) {
+        throw new IllegalArgumentException('think_time_ms must be 0..3600000')
+    }
+    if (pauseMs &gt; 0) Thread.sleep(pauseMs)
+    Long deadline = (Long) vars.getObject('__renew_at_nanos')
+    boolean needed = !vars.get('access_token') || deadline == null || System.nanoTime() &gt;= deadline ||
+        props.getProperty('token_each_request', 'false') == 'true'
+    vars.put('token_needed', Boolean.toString(needed))
+    if (needed) {
+        vars.remove('access_token')
+        vars.remove('raw_access_token')
+        vars.remove('raw_expires_in')
+        vars.remove('raw_token_type')
+        def id = URLEncoder.encode(System.getenv('COGNITO_CLIENT_ID'), 'UTF-8')
+        def secret = URLEncoder.encode(System.getenv('COGNITO_CLIENT_SECRET'), 'UTF-8')
+        vars.put('cognito_basic', 'Basic ' + Base64.encoder.encodeToString((id + ':' + secret).getBytes(StandardCharsets.UTF_8)))
+        vars.putObject('__token_started_nanos', System.nanoTime())
+    }
+    SampleResult.setIgnore()
+} catch (InterruptedException ignored) {
+    Thread.currentThread().interrupt()
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CANCELLED')
+    SampleResult.setResponseMessage('Token preparation cancelled')
+    SampleResult.setStopThread(true)
+} catch (Exception ignored) {
+    // Do not log exception text: malformed input may contain credential material.
+    vars.remove('access_token')
+    vars.remove('cognito_basic')
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CONFIG_ERROR')
+    SampleResult.setResponseMessage('Check Cognito environment variables, HTTPS endpoint and runtime settings; see handbook')
+    SampleResult.setResponseData('Configuration validation failed. No API request sent.', 'UTF-8')
+    SampleResult.setStopThread(true)
+}
+</stringProp>
+          </JSR223Sampler>
+          <hashTree />
+          <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Acquire when token is absent or renewal time reached" enabled="true">
+            <stringProp name="IfController.condition">${token_needed}</stringProp>
+            <boolProp name="IfController.evaluateAll">false</boolProp>
+            <boolProp name="IfController.useExpression">true</boolProp>
+          </IfController>
+          <hashTree>
+            <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="AUTH Cognito /oauth2/token" enabled="true">
+              <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                <collectionProp name="Arguments.arguments">
+                  <elementProp name="grant_type" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">grant_type</stringProp>
+                    <stringProp name="Argument.value">client_credentials</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                  <elementProp name="scope" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">scope</stringProp>
+                    <stringProp name="Argument.value">${cognito_scope}</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                </collectionProp>
+              </elementProp>
+              <stringProp name="HTTPSampler.path">${token_path}</stringProp>
+              <stringProp name="HTTPSampler.method">POST</stringProp>
+              <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+              <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+              <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+              <boolProp name="HTTPSampler.image_parser">false</boolProp>
+              <stringProp name="HTTPSampler.domain">${token_host}</stringProp>
+              <stringProp name="HTTPSampler.port">${token_port}</stringProp>
+              <stringProp name="HTTPSampler.protocol">${token_protocol}</stringProp>
+            </HTTPSamplerProxy>
+            <hashTree>
+              <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+                <collectionProp name="HeaderManager.headers">
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Authorization</stringProp>
+                    <stringProp name="Header.value">${cognito_basic}</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Content-Type</stringProp>
+                    <stringProp name="Header.value">application/x-www-form-urlencoded</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Accept</stringProp>
+                    <stringProp name="Header.value">application/json</stringProp>
+                  </elementProp>
+                </collectionProp>
+              </HeaderManager>
+              <hashTree />
+              <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="JSON Extractor: token / lifetime / type" enabled="true">
+                <stringProp name="JSONPostProcessor.referenceNames">raw_access_token;raw_expires_in;raw_token_type</stringProp>
+                <stringProp name="JSONPostProcessor.jsonPathExprs">$.access_token;$.expires_in;$.token_type</stringProp>
+                <stringProp name="JSONPostProcessor.match_numbers">1;1;1</stringProp>
+                <stringProp name="JSONPostProcessor.defaultValues">__MISSING__;__MISSING__;__MISSING__</stringProp>
+                <boolProp name="JSONPostProcessor.compute_concat">false</boolProp>
+              </JSONPostProcessor>
+              <hashTree />
+              <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Validate / cache / redact OAuth" enabled="true">
+                <stringProp name="scriptLanguage">groovy</stringProp>
+                <stringProp name="parameters" />
+                <stringProp name="filename" />
+                <stringProp name="cacheKey">true</stringProp>
+                <stringProp name="script">// JSON Extractor runs before this postprocessor. Scrubbing runs on every response.
+import java.util.concurrent.ThreadLocalRandom
+try {
+    def token = vars.get('raw_access_token')
+    def kind = vars.get('raw_token_type')
+    def lifetimeText = vars.get('raw_expires_in')
+    if (prev.getResponseCode() != '200' || !prev.isSuccessful() ||
+        !token || token == '__MISSING__' || !(token ==~ /[A-Za-z0-9._~+\/=-]+/) ||
+        !'Bearer'.equalsIgnoreCase(kind) || !(lifetimeText ==~ /[0-9]+/)) {
+        throw new IllegalArgumentException('Invalid OAuth response')
+    }
+    long lifetime = Long.parseLong(lifetimeText)
+    if (lifetime &lt;= 0 || lifetime &gt; 86400) throw new IllegalArgumentException('Invalid expires_in')
+    double ratio = (Double) vars.getObject('__reuse_ratio')
+    double jitter = (Double) vars.getObject('__jitter_fraction')
+    double safety = Math.min((Double) vars.getObject('__safety_seconds'), lifetime * 0.1d)
+    double useSeconds = Math.min(lifetime * ratio * (1.0d - ThreadLocalRandom.current().nextDouble() * jitter), lifetime - safety)
+    long started = (Long) vars.getObject('__token_started_nanos')
+    long deadline = started + (long) Math.floor(useSeconds * 1_000_000_000d)
+    if (System.nanoTime() &gt;= deadline) throw new IllegalArgumentException('Token response arrived too late')
+    vars.put('access_token', token)
+    vars.putObject('__renew_at_nanos', deadline)
+} catch (Exception ignored) {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+    prev.setSuccessful(false)
+    prev.setStopThread(true)
+    prev.setResponseMessage('OAuth acquisition failed; inspect HTTP status and private Cognito settings. Sensitive response redacted.')
+} finally {
+    prev.setResponseData('[REDACTED OAuth response]', 'UTF-8')
+    prev.setSamplerData('')
+    prev.setRequestHeaders('')
+    prev.setResponseHeaders('')
+    vars.remove('cognito_basic')
+    vars.remove('raw_access_token')
+    vars.remove('raw_expires_in')
+    vars.remove('raw_token_type')
+}
+</stringProp>
+              </JSR223PostProcessor>
+              <hashTree />
+            </hashTree>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="API POST createItem" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.name" />
+                  <stringProp name="Argument.value">{"active":false,"category":"book","code":"YB226","name":"8VFgM0Fmxk75","quantity":1,"contact":"legw9yoojety@example.com","price":27.2,"tags":["d","b","c"]}</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                  <boolProp name="HTTPArgument.use_equals">false</boolProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.path">/items</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <boolProp name="HTTPSampler.image_parser">false</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Content-Type</stringProp>
+                  <stringProp name="Header.value">application/json</stringProp>
+                </elementProp>
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">X-API-KEY</stringProp>
+                  <stringProp name="Header.value">${api_key}</stringProp>
+                </elementProp>
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${access_token}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree />
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Clear outgoing headers (no replay)" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp>
+              <stringProp name="parameters" />
+              <stringProp name="filename" />
+              <stringProp name="cacheKey">true</stringProp>
+              <stringProp name="script">// Prevent a View Results Tree listener from retaining the outgoing bearer header.
+prev.setRequestHeaders('')
+prev.setSamplerData('')
+if (prev.getResponseCode() == '401' || prev.getResponseCode() == '403') {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+}
+// No automatic replay: a POST might already have changed server state.
+</stringProp>
+            </JSR223PostProcessor>
+            <hashTree />
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Expected HTTP status from OpenAPI" enabled="true">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="0">^(?:201)$</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">1</intProp>
+            </ResponseAssertion>
+            <hashTree />
+          </hashTree>
+        </hashTree>
+        <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="GET getItem" enabled="false" />
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Prepare / check token (no result on success)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters" />
+            <stringProp name="filename" />
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">// Executes before EVERY selected API operation. vars belong to this JMeter thread.
+import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+try {
+    if (!vars.get('__auth_initialized')) {
+        def setting = { String env, String property, String fallback -&gt;
+            def value = System.getenv(env)
+            value != null &amp;&amp; !value.isEmpty() ? value : props.getProperty(property, fallback)
+        }
+        def uri = new URI(setting('COGNITO_TOKEN_URL', 'cognito_token_url', ''))
+        boolean loopback = uri.host in ['localhost', '127.0.0.1', '[::1]', '::1']
+        boolean mockHttp = props.getProperty('allow_http_token_loopback', 'false') == 'true' &amp;&amp; loopback
+        if (!uri.host || uri.userInfo || uri.query || uri.fragment ||
+            !(uri.scheme == 'https' || uri.scheme == 'http' &amp;&amp; mockHttp) ||
+            !uri.rawPath || uri.host.endsWith('.invalid')) {
+            throw new IllegalArgumentException('Set a valid HTTPS COGNITO_TOKEN_URL; HTTP is allowed only for explicit loopback mock tests')
+        }
+        def clientId = System.getenv('COGNITO_CLIENT_ID')
+        def secret = System.getenv('COGNITO_CLIENT_SECRET')
+        if (!clientId || !secret || clientId.contains(':') || clientId == 'YOUR_CLIENT_ID') {
+            throw new IllegalArgumentException('Set COGNITO_CLIENT_ID and COGNITO_CLIENT_SECRET in the JMeter process environment')
+        }
+        def scope = setting('COGNITO_SCOPE', 'cognito_scope', '')
+        if (!scope || scope =~ /[\r\n]/) {
+            throw new IllegalArgumentException('Set space-separated custom COGNITO_SCOPE values')
+        }
+        double ratio = Double.parseDouble(props.getProperty('token_reuse_ratio', '0.75'))
+        double jitter = Double.parseDouble(props.getProperty('token_jitter_fraction', '0.05'))
+        double safety = Double.parseDouble(props.getProperty('token_safety_seconds', '30'))
+        if (!Double.isFinite(ratio) || ratio &lt;= 0 || ratio &gt;= 1 ||
+            !Double.isFinite(jitter) || jitter &lt; 0 || jitter &gt; 0.5 ||
+            !Double.isFinite(safety) || safety &lt; 0 || safety &gt; 3600) {
+            throw new IllegalArgumentException('Invalid token reuse ratio/jitter/safety settings')
+        }
+        def apiHost = vars.get('host')
+        if (!apiHost || !(apiHost ==~ /[A-Za-z0-9.:\[\]-]+/) ||
+            !(vars.get('protocol') in ['http','https']) ||
+            !(Integer.parseInt(vars.get('port')) in 1..65535)) {
+            throw new IllegalArgumentException('Invalid API host/protocol/port')
+        }
+        if (vars.get('protocol') == 'http' &amp;&amp; !(apiHost in ['localhost','127.0.0.1','::1','[::1]']) &amp;&amp;
+            props.getProperty('allow_http_api', 'false') != 'true') {
+            throw new IllegalArgumentException('Use HTTPS for a remote API, or explicitly set allow_http_api=true in a controlled test network')
+        }
+        def apiKey = System.getenv('API_KEY') ?: vars.get('api_key')
+        if (apiKey =~ /[\r\n]/) {
+            throw new IllegalArgumentException('API_KEY contains forbidden line breaks')
+        }
+        vars.put('api_key', apiKey)
+        vars.put('token_host', uri.host)
+        vars.put('token_port', Integer.toString(uri.port &lt; 0 ? (uri.scheme == 'https' ? 443 : 80) : uri.port))
+        vars.put('token_protocol', uri.scheme)
+        vars.put('token_path', uri.rawPath)
+        vars.put('cognito_scope', scope)
+        vars.putObject('__reuse_ratio', ratio)
+        vars.putObject('__jitter_fraction', jitter)
+        vars.putObject('__safety_seconds', safety)
+        vars.put('__auth_initialized', 'true')
+    }
+    long pauseMs = Long.parseLong(props.getProperty('think_time_ms', '0'))
+    if (pauseMs &lt; 0 || pauseMs &gt; 3600000) {
+        throw new IllegalArgumentException('think_time_ms must be 0..3600000')
+    }
+    if (pauseMs &gt; 0) Thread.sleep(pauseMs)
+    Long deadline = (Long) vars.getObject('__renew_at_nanos')
+    boolean needed = !vars.get('access_token') || deadline == null || System.nanoTime() &gt;= deadline ||
+        props.getProperty('token_each_request', 'false') == 'true'
+    vars.put('token_needed', Boolean.toString(needed))
+    if (needed) {
+        vars.remove('access_token')
+        vars.remove('raw_access_token')
+        vars.remove('raw_expires_in')
+        vars.remove('raw_token_type')
+        def id = URLEncoder.encode(System.getenv('COGNITO_CLIENT_ID'), 'UTF-8')
+        def secret = URLEncoder.encode(System.getenv('COGNITO_CLIENT_SECRET'), 'UTF-8')
+        vars.put('cognito_basic', 'Basic ' + Base64.encoder.encodeToString((id + ':' + secret).getBytes(StandardCharsets.UTF_8)))
+        vars.putObject('__token_started_nanos', System.nanoTime())
+    }
+    SampleResult.setIgnore()
+} catch (InterruptedException ignored) {
+    Thread.currentThread().interrupt()
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CANCELLED')
+    SampleResult.setResponseMessage('Token preparation cancelled')
+    SampleResult.setStopThread(true)
+} catch (Exception ignored) {
+    // Do not log exception text: malformed input may contain credential material.
+    vars.remove('access_token')
+    vars.remove('cognito_basic')
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CONFIG_ERROR')
+    SampleResult.setResponseMessage('Check Cognito environment variables, HTTPS endpoint and runtime settings; see handbook')
+    SampleResult.setResponseData('Configuration validation failed. No API request sent.', 'UTF-8')
+    SampleResult.setStopThread(true)
+}
+</stringProp>
+          </JSR223Sampler>
+          <hashTree />
+          <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Acquire when token is absent or renewal time reached" enabled="true">
+            <stringProp name="IfController.condition">${token_needed}</stringProp>
+            <boolProp name="IfController.evaluateAll">false</boolProp>
+            <boolProp name="IfController.useExpression">true</boolProp>
+          </IfController>
+          <hashTree>
+            <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="AUTH Cognito /oauth2/token" enabled="true">
+              <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                <collectionProp name="Arguments.arguments">
+                  <elementProp name="grant_type" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">grant_type</stringProp>
+                    <stringProp name="Argument.value">client_credentials</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                  <elementProp name="scope" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">scope</stringProp>
+                    <stringProp name="Argument.value">${cognito_scope}</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                </collectionProp>
+              </elementProp>
+              <stringProp name="HTTPSampler.path">${token_path}</stringProp>
+              <stringProp name="HTTPSampler.method">POST</stringProp>
+              <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+              <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+              <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+              <boolProp name="HTTPSampler.image_parser">false</boolProp>
+              <stringProp name="HTTPSampler.domain">${token_host}</stringProp>
+              <stringProp name="HTTPSampler.port">${token_port}</stringProp>
+              <stringProp name="HTTPSampler.protocol">${token_protocol}</stringProp>
+            </HTTPSamplerProxy>
+            <hashTree>
+              <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+                <collectionProp name="HeaderManager.headers">
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Authorization</stringProp>
+                    <stringProp name="Header.value">${cognito_basic}</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Content-Type</stringProp>
+                    <stringProp name="Header.value">application/x-www-form-urlencoded</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Accept</stringProp>
+                    <stringProp name="Header.value">application/json</stringProp>
+                  </elementProp>
+                </collectionProp>
+              </HeaderManager>
+              <hashTree />
+              <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="JSON Extractor: token / lifetime / type" enabled="true">
+                <stringProp name="JSONPostProcessor.referenceNames">raw_access_token;raw_expires_in;raw_token_type</stringProp>
+                <stringProp name="JSONPostProcessor.jsonPathExprs">$.access_token;$.expires_in;$.token_type</stringProp>
+                <stringProp name="JSONPostProcessor.match_numbers">1;1;1</stringProp>
+                <stringProp name="JSONPostProcessor.defaultValues">__MISSING__;__MISSING__;__MISSING__</stringProp>
+                <boolProp name="JSONPostProcessor.compute_concat">false</boolProp>
+              </JSONPostProcessor>
+              <hashTree />
+              <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Validate / cache / redact OAuth" enabled="true">
+                <stringProp name="scriptLanguage">groovy</stringProp>
+                <stringProp name="parameters" />
+                <stringProp name="filename" />
+                <stringProp name="cacheKey">true</stringProp>
+                <stringProp name="script">// JSON Extractor runs before this postprocessor. Scrubbing runs on every response.
+import java.util.concurrent.ThreadLocalRandom
+try {
+    def token = vars.get('raw_access_token')
+    def kind = vars.get('raw_token_type')
+    def lifetimeText = vars.get('raw_expires_in')
+    if (prev.getResponseCode() != '200' || !prev.isSuccessful() ||
+        !token || token == '__MISSING__' || !(token ==~ /[A-Za-z0-9._~+\/=-]+/) ||
+        !'Bearer'.equalsIgnoreCase(kind) || !(lifetimeText ==~ /[0-9]+/)) {
+        throw new IllegalArgumentException('Invalid OAuth response')
+    }
+    long lifetime = Long.parseLong(lifetimeText)
+    if (lifetime &lt;= 0 || lifetime &gt; 86400) throw new IllegalArgumentException('Invalid expires_in')
+    double ratio = (Double) vars.getObject('__reuse_ratio')
+    double jitter = (Double) vars.getObject('__jitter_fraction')
+    double safety = Math.min((Double) vars.getObject('__safety_seconds'), lifetime * 0.1d)
+    double useSeconds = Math.min(lifetime * ratio * (1.0d - ThreadLocalRandom.current().nextDouble() * jitter), lifetime - safety)
+    long started = (Long) vars.getObject('__token_started_nanos')
+    long deadline = started + (long) Math.floor(useSeconds * 1_000_000_000d)
+    if (System.nanoTime() &gt;= deadline) throw new IllegalArgumentException('Token response arrived too late')
+    vars.put('access_token', token)
+    vars.putObject('__renew_at_nanos', deadline)
+} catch (Exception ignored) {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+    prev.setSuccessful(false)
+    prev.setStopThread(true)
+    prev.setResponseMessage('OAuth acquisition failed; inspect HTTP status and private Cognito settings. Sensitive response redacted.')
+} finally {
+    prev.setResponseData('[REDACTED OAuth response]', 'UTF-8')
+    prev.setSamplerData('')
+    prev.setRequestHeaders('')
+    prev.setResponseHeaders('')
+    vars.remove('cognito_basic')
+    vars.remove('raw_access_token')
+    vars.remove('raw_expires_in')
+    vars.remove('raw_token_type')
+}
+</stringProp>
+              </JSR223PostProcessor>
+              <hashTree />
+            </hashTree>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="API GET getItem" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments" />
+            </elementProp>
+            <stringProp name="HTTPSampler.path">/items/52</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+            <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <boolProp name="HTTPSampler.image_parser">false</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">X-API-KEY</stringProp>
+                  <stringProp name="Header.value">${api_key}</stringProp>
+                </elementProp>
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${access_token}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree />
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Clear outgoing headers (no replay)" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp>
+              <stringProp name="parameters" />
+              <stringProp name="filename" />
+              <stringProp name="cacheKey">true</stringProp>
+              <stringProp name="script">// Prevent a View Results Tree listener from retaining the outgoing bearer header.
+prev.setRequestHeaders('')
+prev.setSamplerData('')
+if (prev.getResponseCode() == '401' || prev.getResponseCode() == '403') {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+}
+// No automatic replay: a POST might already have changed server state.
+</stringProp>
+            </JSR223PostProcessor>
+            <hashTree />
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Expected HTTP status from OpenAPI" enabled="true">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="0">^(?:200)$</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">1</intProp>
+            </ResponseAssertion>
+            <hashTree />
+          </hashTree>
+        </hashTree>
+        <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="DELETE deleteItem" enabled="false" />
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Prepare / check token (no result on success)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters" />
+            <stringProp name="filename" />
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">// Executes before EVERY selected API operation. vars belong to this JMeter thread.
+import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+try {
+    if (!vars.get('__auth_initialized')) {
+        def setting = { String env, String property, String fallback -&gt;
+            def value = System.getenv(env)
+            value != null &amp;&amp; !value.isEmpty() ? value : props.getProperty(property, fallback)
+        }
+        def uri = new URI(setting('COGNITO_TOKEN_URL', 'cognito_token_url', ''))
+        boolean loopback = uri.host in ['localhost', '127.0.0.1', '[::1]', '::1']
+        boolean mockHttp = props.getProperty('allow_http_token_loopback', 'false') == 'true' &amp;&amp; loopback
+        if (!uri.host || uri.userInfo || uri.query || uri.fragment ||
+            !(uri.scheme == 'https' || uri.scheme == 'http' &amp;&amp; mockHttp) ||
+            !uri.rawPath || uri.host.endsWith('.invalid')) {
+            throw new IllegalArgumentException('Set a valid HTTPS COGNITO_TOKEN_URL; HTTP is allowed only for explicit loopback mock tests')
+        }
+        def clientId = System.getenv('COGNITO_CLIENT_ID')
+        def secret = System.getenv('COGNITO_CLIENT_SECRET')
+        if (!clientId || !secret || clientId.contains(':') || clientId == 'YOUR_CLIENT_ID') {
+            throw new IllegalArgumentException('Set COGNITO_CLIENT_ID and COGNITO_CLIENT_SECRET in the JMeter process environment')
+        }
+        def scope = setting('COGNITO_SCOPE', 'cognito_scope', '')
+        if (!scope || scope =~ /[\r\n]/) {
+            throw new IllegalArgumentException('Set space-separated custom COGNITO_SCOPE values')
+        }
+        double ratio = Double.parseDouble(props.getProperty('token_reuse_ratio', '0.75'))
+        double jitter = Double.parseDouble(props.getProperty('token_jitter_fraction', '0.05'))
+        double safety = Double.parseDouble(props.getProperty('token_safety_seconds', '30'))
+        if (!Double.isFinite(ratio) || ratio &lt;= 0 || ratio &gt;= 1 ||
+            !Double.isFinite(jitter) || jitter &lt; 0 || jitter &gt; 0.5 ||
+            !Double.isFinite(safety) || safety &lt; 0 || safety &gt; 3600) {
+            throw new IllegalArgumentException('Invalid token reuse ratio/jitter/safety settings')
+        }
+        def apiHost = vars.get('host')
+        if (!apiHost || !(apiHost ==~ /[A-Za-z0-9.:\[\]-]+/) ||
+            !(vars.get('protocol') in ['http','https']) ||
+            !(Integer.parseInt(vars.get('port')) in 1..65535)) {
+            throw new IllegalArgumentException('Invalid API host/protocol/port')
+        }
+        if (vars.get('protocol') == 'http' &amp;&amp; !(apiHost in ['localhost','127.0.0.1','::1','[::1]']) &amp;&amp;
+            props.getProperty('allow_http_api', 'false') != 'true') {
+            throw new IllegalArgumentException('Use HTTPS for a remote API, or explicitly set allow_http_api=true in a controlled test network')
+        }
+        def apiKey = System.getenv('API_KEY') ?: vars.get('api_key')
+        if (apiKey =~ /[\r\n]/) {
+            throw new IllegalArgumentException('API_KEY contains forbidden line breaks')
+        }
+        vars.put('api_key', apiKey)
+        vars.put('token_host', uri.host)
+        vars.put('token_port', Integer.toString(uri.port &lt; 0 ? (uri.scheme == 'https' ? 443 : 80) : uri.port))
+        vars.put('token_protocol', uri.scheme)
+        vars.put('token_path', uri.rawPath)
+        vars.put('cognito_scope', scope)
+        vars.putObject('__reuse_ratio', ratio)
+        vars.putObject('__jitter_fraction', jitter)
+        vars.putObject('__safety_seconds', safety)
+        vars.put('__auth_initialized', 'true')
+    }
+    long pauseMs = Long.parseLong(props.getProperty('think_time_ms', '0'))
+    if (pauseMs &lt; 0 || pauseMs &gt; 3600000) {
+        throw new IllegalArgumentException('think_time_ms must be 0..3600000')
+    }
+    if (pauseMs &gt; 0) Thread.sleep(pauseMs)
+    Long deadline = (Long) vars.getObject('__renew_at_nanos')
+    boolean needed = !vars.get('access_token') || deadline == null || System.nanoTime() &gt;= deadline ||
+        props.getProperty('token_each_request', 'false') == 'true'
+    vars.put('token_needed', Boolean.toString(needed))
+    if (needed) {
+        vars.remove('access_token')
+        vars.remove('raw_access_token')
+        vars.remove('raw_expires_in')
+        vars.remove('raw_token_type')
+        def id = URLEncoder.encode(System.getenv('COGNITO_CLIENT_ID'), 'UTF-8')
+        def secret = URLEncoder.encode(System.getenv('COGNITO_CLIENT_SECRET'), 'UTF-8')
+        vars.put('cognito_basic', 'Basic ' + Base64.encoder.encodeToString((id + ':' + secret).getBytes(StandardCharsets.UTF_8)))
+        vars.putObject('__token_started_nanos', System.nanoTime())
+    }
+    SampleResult.setIgnore()
+} catch (InterruptedException ignored) {
+    Thread.currentThread().interrupt()
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CANCELLED')
+    SampleResult.setResponseMessage('Token preparation cancelled')
+    SampleResult.setStopThread(true)
+} catch (Exception ignored) {
+    // Do not log exception text: malformed input may contain credential material.
+    vars.remove('access_token')
+    vars.remove('cognito_basic')
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CONFIG_ERROR')
+    SampleResult.setResponseMessage('Check Cognito environment variables, HTTPS endpoint and runtime settings; see handbook')
+    SampleResult.setResponseData('Configuration validation failed. No API request sent.', 'UTF-8')
+    SampleResult.setStopThread(true)
+}
+</stringProp>
+          </JSR223Sampler>
+          <hashTree />
+          <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Acquire when token is absent or renewal time reached" enabled="true">
+            <stringProp name="IfController.condition">${token_needed}</stringProp>
+            <boolProp name="IfController.evaluateAll">false</boolProp>
+            <boolProp name="IfController.useExpression">true</boolProp>
+          </IfController>
+          <hashTree>
+            <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="AUTH Cognito /oauth2/token" enabled="true">
+              <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                <collectionProp name="Arguments.arguments">
+                  <elementProp name="grant_type" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">grant_type</stringProp>
+                    <stringProp name="Argument.value">client_credentials</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                  <elementProp name="scope" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">scope</stringProp>
+                    <stringProp name="Argument.value">${cognito_scope}</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                </collectionProp>
+              </elementProp>
+              <stringProp name="HTTPSampler.path">${token_path}</stringProp>
+              <stringProp name="HTTPSampler.method">POST</stringProp>
+              <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+              <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+              <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+              <boolProp name="HTTPSampler.image_parser">false</boolProp>
+              <stringProp name="HTTPSampler.domain">${token_host}</stringProp>
+              <stringProp name="HTTPSampler.port">${token_port}</stringProp>
+              <stringProp name="HTTPSampler.protocol">${token_protocol}</stringProp>
+            </HTTPSamplerProxy>
+            <hashTree>
+              <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+                <collectionProp name="HeaderManager.headers">
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Authorization</stringProp>
+                    <stringProp name="Header.value">${cognito_basic}</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Content-Type</stringProp>
+                    <stringProp name="Header.value">application/x-www-form-urlencoded</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Accept</stringProp>
+                    <stringProp name="Header.value">application/json</stringProp>
+                  </elementProp>
+                </collectionProp>
+              </HeaderManager>
+              <hashTree />
+              <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="JSON Extractor: token / lifetime / type" enabled="true">
+                <stringProp name="JSONPostProcessor.referenceNames">raw_access_token;raw_expires_in;raw_token_type</stringProp>
+                <stringProp name="JSONPostProcessor.jsonPathExprs">$.access_token;$.expires_in;$.token_type</stringProp>
+                <stringProp name="JSONPostProcessor.match_numbers">1;1;1</stringProp>
+                <stringProp name="JSONPostProcessor.defaultValues">__MISSING__;__MISSING__;__MISSING__</stringProp>
+                <boolProp name="JSONPostProcessor.compute_concat">false</boolProp>
+              </JSONPostProcessor>
+              <hashTree />
+              <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Validate / cache / redact OAuth" enabled="true">
+                <stringProp name="scriptLanguage">groovy</stringProp>
+                <stringProp name="parameters" />
+                <stringProp name="filename" />
+                <stringProp name="cacheKey">true</stringProp>
+                <stringProp name="script">// JSON Extractor runs before this postprocessor. Scrubbing runs on every response.
+import java.util.concurrent.ThreadLocalRandom
+try {
+    def token = vars.get('raw_access_token')
+    def kind = vars.get('raw_token_type')
+    def lifetimeText = vars.get('raw_expires_in')
+    if (prev.getResponseCode() != '200' || !prev.isSuccessful() ||
+        !token || token == '__MISSING__' || !(token ==~ /[A-Za-z0-9._~+\/=-]+/) ||
+        !'Bearer'.equalsIgnoreCase(kind) || !(lifetimeText ==~ /[0-9]+/)) {
+        throw new IllegalArgumentException('Invalid OAuth response')
+    }
+    long lifetime = Long.parseLong(lifetimeText)
+    if (lifetime &lt;= 0 || lifetime &gt; 86400) throw new IllegalArgumentException('Invalid expires_in')
+    double ratio = (Double) vars.getObject('__reuse_ratio')
+    double jitter = (Double) vars.getObject('__jitter_fraction')
+    double safety = Math.min((Double) vars.getObject('__safety_seconds'), lifetime * 0.1d)
+    double useSeconds = Math.min(lifetime * ratio * (1.0d - ThreadLocalRandom.current().nextDouble() * jitter), lifetime - safety)
+    long started = (Long) vars.getObject('__token_started_nanos')
+    long deadline = started + (long) Math.floor(useSeconds * 1_000_000_000d)
+    if (System.nanoTime() &gt;= deadline) throw new IllegalArgumentException('Token response arrived too late')
+    vars.put('access_token', token)
+    vars.putObject('__renew_at_nanos', deadline)
+} catch (Exception ignored) {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+    prev.setSuccessful(false)
+    prev.setStopThread(true)
+    prev.setResponseMessage('OAuth acquisition failed; inspect HTTP status and private Cognito settings. Sensitive response redacted.')
+} finally {
+    prev.setResponseData('[REDACTED OAuth response]', 'UTF-8')
+    prev.setSamplerData('')
+    prev.setRequestHeaders('')
+    prev.setResponseHeaders('')
+    vars.remove('cognito_basic')
+    vars.remove('raw_access_token')
+    vars.remove('raw_expires_in')
+    vars.remove('raw_token_type')
+}
+</stringProp>
+              </JSR223PostProcessor>
+              <hashTree />
+            </hashTree>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="API DELETE deleteItem" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments" />
+            </elementProp>
+            <stringProp name="HTTPSampler.path">/items/86</stringProp>
+            <stringProp name="HTTPSampler.method">DELETE</stringProp>
+            <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <boolProp name="HTTPSampler.image_parser">false</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">X-API-KEY</stringProp>
+                  <stringProp name="Header.value">${api_key}</stringProp>
+                </elementProp>
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${access_token}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree />
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Clear outgoing headers (no replay)" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp>
+              <stringProp name="parameters" />
+              <stringProp name="filename" />
+              <stringProp name="cacheKey">true</stringProp>
+              <stringProp name="script">// Prevent a View Results Tree listener from retaining the outgoing bearer header.
+prev.setRequestHeaders('')
+prev.setSamplerData('')
+if (prev.getResponseCode() == '401' || prev.getResponseCode() == '403') {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+}
+// No automatic replay: a POST might already have changed server state.
+</stringProp>
+            </JSR223PostProcessor>
+            <hashTree />
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Expected HTTP status from OpenAPI" enabled="true">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="0">^(?:204)$</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">1</intProp>
+            </ResponseAssertion>
+            <hashTree />
+          </hashTree>
+        </hashTree>
+        <GenericController guiclass="LogicControllerGui" testclass="GenericController" testname="POST searchItems" enabled="false" />
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Prepare / check token (no result on success)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters" />
+            <stringProp name="filename" />
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">// Executes before EVERY selected API operation. vars belong to this JMeter thread.
+import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
+try {
+    if (!vars.get('__auth_initialized')) {
+        def setting = { String env, String property, String fallback -&gt;
+            def value = System.getenv(env)
+            value != null &amp;&amp; !value.isEmpty() ? value : props.getProperty(property, fallback)
+        }
+        def uri = new URI(setting('COGNITO_TOKEN_URL', 'cognito_token_url', ''))
+        boolean loopback = uri.host in ['localhost', '127.0.0.1', '[::1]', '::1']
+        boolean mockHttp = props.getProperty('allow_http_token_loopback', 'false') == 'true' &amp;&amp; loopback
+        if (!uri.host || uri.userInfo || uri.query || uri.fragment ||
+            !(uri.scheme == 'https' || uri.scheme == 'http' &amp;&amp; mockHttp) ||
+            !uri.rawPath || uri.host.endsWith('.invalid')) {
+            throw new IllegalArgumentException('Set a valid HTTPS COGNITO_TOKEN_URL; HTTP is allowed only for explicit loopback mock tests')
+        }
+        def clientId = System.getenv('COGNITO_CLIENT_ID')
+        def secret = System.getenv('COGNITO_CLIENT_SECRET')
+        if (!clientId || !secret || clientId.contains(':') || clientId == 'YOUR_CLIENT_ID') {
+            throw new IllegalArgumentException('Set COGNITO_CLIENT_ID and COGNITO_CLIENT_SECRET in the JMeter process environment')
+        }
+        def scope = setting('COGNITO_SCOPE', 'cognito_scope', '')
+        if (!scope || scope =~ /[\r\n]/) {
+            throw new IllegalArgumentException('Set space-separated custom COGNITO_SCOPE values')
+        }
+        double ratio = Double.parseDouble(props.getProperty('token_reuse_ratio', '0.75'))
+        double jitter = Double.parseDouble(props.getProperty('token_jitter_fraction', '0.05'))
+        double safety = Double.parseDouble(props.getProperty('token_safety_seconds', '30'))
+        if (!Double.isFinite(ratio) || ratio &lt;= 0 || ratio &gt;= 1 ||
+            !Double.isFinite(jitter) || jitter &lt; 0 || jitter &gt; 0.5 ||
+            !Double.isFinite(safety) || safety &lt; 0 || safety &gt; 3600) {
+            throw new IllegalArgumentException('Invalid token reuse ratio/jitter/safety settings')
+        }
+        def apiHost = vars.get('host')
+        if (!apiHost || !(apiHost ==~ /[A-Za-z0-9.:\[\]-]+/) ||
+            !(vars.get('protocol') in ['http','https']) ||
+            !(Integer.parseInt(vars.get('port')) in 1..65535)) {
+            throw new IllegalArgumentException('Invalid API host/protocol/port')
+        }
+        if (vars.get('protocol') == 'http' &amp;&amp; !(apiHost in ['localhost','127.0.0.1','::1','[::1]']) &amp;&amp;
+            props.getProperty('allow_http_api', 'false') != 'true') {
+            throw new IllegalArgumentException('Use HTTPS for a remote API, or explicitly set allow_http_api=true in a controlled test network')
+        }
+        def apiKey = System.getenv('API_KEY') ?: vars.get('api_key')
+        if (apiKey =~ /[\r\n]/) {
+            throw new IllegalArgumentException('API_KEY contains forbidden line breaks')
+        }
+        vars.put('api_key', apiKey)
+        vars.put('token_host', uri.host)
+        vars.put('token_port', Integer.toString(uri.port &lt; 0 ? (uri.scheme == 'https' ? 443 : 80) : uri.port))
+        vars.put('token_protocol', uri.scheme)
+        vars.put('token_path', uri.rawPath)
+        vars.put('cognito_scope', scope)
+        vars.putObject('__reuse_ratio', ratio)
+        vars.putObject('__jitter_fraction', jitter)
+        vars.putObject('__safety_seconds', safety)
+        vars.put('__auth_initialized', 'true')
+    }
+    long pauseMs = Long.parseLong(props.getProperty('think_time_ms', '0'))
+    if (pauseMs &lt; 0 || pauseMs &gt; 3600000) {
+        throw new IllegalArgumentException('think_time_ms must be 0..3600000')
+    }
+    if (pauseMs &gt; 0) Thread.sleep(pauseMs)
+    Long deadline = (Long) vars.getObject('__renew_at_nanos')
+    boolean needed = !vars.get('access_token') || deadline == null || System.nanoTime() &gt;= deadline ||
+        props.getProperty('token_each_request', 'false') == 'true'
+    vars.put('token_needed', Boolean.toString(needed))
+    if (needed) {
+        vars.remove('access_token')
+        vars.remove('raw_access_token')
+        vars.remove('raw_expires_in')
+        vars.remove('raw_token_type')
+        def id = URLEncoder.encode(System.getenv('COGNITO_CLIENT_ID'), 'UTF-8')
+        def secret = URLEncoder.encode(System.getenv('COGNITO_CLIENT_SECRET'), 'UTF-8')
+        vars.put('cognito_basic', 'Basic ' + Base64.encoder.encodeToString((id + ':' + secret).getBytes(StandardCharsets.UTF_8)))
+        vars.putObject('__token_started_nanos', System.nanoTime())
+    }
+    SampleResult.setIgnore()
+} catch (InterruptedException ignored) {
+    Thread.currentThread().interrupt()
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CANCELLED')
+    SampleResult.setResponseMessage('Token preparation cancelled')
+    SampleResult.setStopThread(true)
+} catch (Exception ignored) {
+    // Do not log exception text: malformed input may contain credential material.
+    vars.remove('access_token')
+    vars.remove('cognito_basic')
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode('CONFIG_ERROR')
+    SampleResult.setResponseMessage('Check Cognito environment variables, HTTPS endpoint and runtime settings; see handbook')
+    SampleResult.setResponseData('Configuration validation failed. No API request sent.', 'UTF-8')
+    SampleResult.setStopThread(true)
+}
+</stringProp>
+          </JSR223Sampler>
+          <hashTree />
+          <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Acquire when token is absent or renewal time reached" enabled="true">
+            <stringProp name="IfController.condition">${token_needed}</stringProp>
+            <boolProp name="IfController.evaluateAll">false</boolProp>
+            <boolProp name="IfController.useExpression">true</boolProp>
+          </IfController>
+          <hashTree>
+            <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="AUTH Cognito /oauth2/token" enabled="true">
+              <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+                <collectionProp name="Arguments.arguments">
+                  <elementProp name="grant_type" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">grant_type</stringProp>
+                    <stringProp name="Argument.value">client_credentials</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                  <elementProp name="scope" elementType="HTTPArgument">
+                    <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                    <stringProp name="Argument.name">scope</stringProp>
+                    <stringProp name="Argument.value">${cognito_scope}</stringProp>
+                    <stringProp name="Argument.metadata">=</stringProp>
+                    <boolProp name="HTTPArgument.use_equals">true</boolProp>
+                  </elementProp>
+                </collectionProp>
+              </elementProp>
+              <stringProp name="HTTPSampler.path">${token_path}</stringProp>
+              <stringProp name="HTTPSampler.method">POST</stringProp>
+              <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+              <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+              <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+              <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+              <boolProp name="HTTPSampler.image_parser">false</boolProp>
+              <stringProp name="HTTPSampler.domain">${token_host}</stringProp>
+              <stringProp name="HTTPSampler.port">${token_port}</stringProp>
+              <stringProp name="HTTPSampler.protocol">${token_protocol}</stringProp>
+            </HTTPSamplerProxy>
+            <hashTree>
+              <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+                <collectionProp name="HeaderManager.headers">
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Authorization</stringProp>
+                    <stringProp name="Header.value">${cognito_basic}</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Content-Type</stringProp>
+                    <stringProp name="Header.value">application/x-www-form-urlencoded</stringProp>
+                  </elementProp>
+                  <elementProp name="" elementType="Header">
+                    <stringProp name="Header.name">Accept</stringProp>
+                    <stringProp name="Header.value">application/json</stringProp>
+                  </elementProp>
+                </collectionProp>
+              </HeaderManager>
+              <hashTree />
+              <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="JSON Extractor: token / lifetime / type" enabled="true">
+                <stringProp name="JSONPostProcessor.referenceNames">raw_access_token;raw_expires_in;raw_token_type</stringProp>
+                <stringProp name="JSONPostProcessor.jsonPathExprs">$.access_token;$.expires_in;$.token_type</stringProp>
+                <stringProp name="JSONPostProcessor.match_numbers">1;1;1</stringProp>
+                <stringProp name="JSONPostProcessor.defaultValues">__MISSING__;__MISSING__;__MISSING__</stringProp>
+                <boolProp name="JSONPostProcessor.compute_concat">false</boolProp>
+              </JSONPostProcessor>
+              <hashTree />
+              <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Validate / cache / redact OAuth" enabled="true">
+                <stringProp name="scriptLanguage">groovy</stringProp>
+                <stringProp name="parameters" />
+                <stringProp name="filename" />
+                <stringProp name="cacheKey">true</stringProp>
+                <stringProp name="script">// JSON Extractor runs before this postprocessor. Scrubbing runs on every response.
+import java.util.concurrent.ThreadLocalRandom
+try {
+    def token = vars.get('raw_access_token')
+    def kind = vars.get('raw_token_type')
+    def lifetimeText = vars.get('raw_expires_in')
+    if (prev.getResponseCode() != '200' || !prev.isSuccessful() ||
+        !token || token == '__MISSING__' || !(token ==~ /[A-Za-z0-9._~+\/=-]+/) ||
+        !'Bearer'.equalsIgnoreCase(kind) || !(lifetimeText ==~ /[0-9]+/)) {
+        throw new IllegalArgumentException('Invalid OAuth response')
+    }
+    long lifetime = Long.parseLong(lifetimeText)
+    if (lifetime &lt;= 0 || lifetime &gt; 86400) throw new IllegalArgumentException('Invalid expires_in')
+    double ratio = (Double) vars.getObject('__reuse_ratio')
+    double jitter = (Double) vars.getObject('__jitter_fraction')
+    double safety = Math.min((Double) vars.getObject('__safety_seconds'), lifetime * 0.1d)
+    double useSeconds = Math.min(lifetime * ratio * (1.0d - ThreadLocalRandom.current().nextDouble() * jitter), lifetime - safety)
+    long started = (Long) vars.getObject('__token_started_nanos')
+    long deadline = started + (long) Math.floor(useSeconds * 1_000_000_000d)
+    if (System.nanoTime() &gt;= deadline) throw new IllegalArgumentException('Token response arrived too late')
+    vars.put('access_token', token)
+    vars.putObject('__renew_at_nanos', deadline)
+} catch (Exception ignored) {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+    prev.setSuccessful(false)
+    prev.setStopThread(true)
+    prev.setResponseMessage('OAuth acquisition failed; inspect HTTP status and private Cognito settings. Sensitive response redacted.')
+} finally {
+    prev.setResponseData('[REDACTED OAuth response]', 'UTF-8')
+    prev.setSamplerData('')
+    prev.setRequestHeaders('')
+    prev.setResponseHeaders('')
+    vars.remove('cognito_basic')
+    vars.remove('raw_access_token')
+    vars.remove('raw_expires_in')
+    vars.remove('raw_token_type')
+}
+</stringProp>
+              </JSR223PostProcessor>
+              <hashTree />
+            </hashTree>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="API POST searchItems" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.name" />
+                  <stringProp name="Argument.value">keyword=S2JpDzfOv&amp;tags=B&amp;tags=C</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                  <boolProp name="HTTPArgument.use_equals">false</boolProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.path">/search?trace=true</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <boolProp name="HTTPSampler.image_parser">false</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Headers" enabled="true">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Content-Type</stringProp>
+                  <stringProp name="Header.value">application/x-www-form-urlencoded</stringProp>
+                </elementProp>
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">X-API-KEY</stringProp>
+                  <stringProp name="Header.value">${api_key}</stringProp>
+                </elementProp>
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${access_token}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree />
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Clear outgoing headers (no replay)" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp>
+              <stringProp name="parameters" />
+              <stringProp name="filename" />
+              <stringProp name="cacheKey">true</stringProp>
+              <stringProp name="script">// Prevent a View Results Tree listener from retaining the outgoing bearer header.
+prev.setRequestHeaders('')
+prev.setSamplerData('')
+if (prev.getResponseCode() == '401' || prev.getResponseCode() == '403') {
+    vars.remove('access_token')
+    vars.remove('__renew_at_nanos')
+}
+// No automatic replay: a POST might already have changed server state.
+</stringProp>
+            </JSR223PostProcessor>
+            <hashTree />
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Expected HTTP status from OpenAPI" enabled="true">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="0">^(?:200)$</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">1</intProp>
+            </ResponseAssertion>
+            <hashTree />
+          </hashTree>
+        </hashTree>
+      </hashTree>
+      <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="JTL XML: timings/status - open in View Results Tree" enabled="true">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>true</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>true</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename">${__P(result_file,results.jtl)}</stringProp>
+      </ResultCollector>
+      <hashTree />
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
